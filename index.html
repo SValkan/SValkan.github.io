@@ -1,0 +1,1272 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <link rel="stylesheet" href="css/leaflet.css">
+        <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+        <link rel="stylesheet" href="css/qgis2web.css">
+        <link rel="stylesheet" href="css/fontawesome-all.min.css">
+        <link rel="stylesheet" href="css/leaflet-search.css">
+        <link rel="stylesheet" href="css/leaflet.photon.css">
+        <link rel="stylesheet" href="css/leaflet-measure.css">
+        <style>
+        html, body, #map {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+        }
+        </style>
+        <title></title>
+    </head>
+    <body>
+        <div id="map">
+        </div>
+        <script src="js/qgis2web_expressions.js"></script>
+        <script src="js/leaflet.js"></script>
+        <script src="js/L.Control.Layers.Tree.min.js"></script>
+        <script src="js/leaflet.rotatedMarker.js"></script>
+        <script src="js/leaflet.pattern.js"></script>
+        <script src="js/leaflet-hash.js"></script>
+        <script src="js/Autolinker.min.js"></script>
+        <script src="js/rbush.min.js"></script>
+        <script src="js/labelgun.min.js"></script>
+        <script src="js/labels.js"></script>
+        <script src="js/leaflet.photon.js"></script>
+        <script src="js/leaflet-measure.js"></script>
+        <script src="js/leaflet-search.js"></script>
+        <script src="data/geo_uniHERAKLION_1.js"></script>
+        <script src="data/geo_uniCHANIA_2.js"></script>
+        <script src="data/geo_uniLASITHI_1_3.js"></script>
+        <script src="data/geo_uniRETHYMNON_4.js"></script>
+        <script>
+        var highlightLayer;
+        function highlightFeature(e) {
+            highlightLayer = e.target;
+            highlightLayer.openPopup();
+        }
+        var map = L.map('map', {
+            zoomControl:false, maxZoom:11, minZoom:3
+        }).fitBounds([[34.593791593661706,23.21451806439514],[35.981401598765274,26.555487608180254]]);
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+        var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+        // remove popup's row if "visible-with-data"
+        function removeEmptyRowsFromPopupContent(content, feature) {
+         var tempDiv = document.createElement('div');
+         tempDiv.innerHTML = content;
+         var rows = tempDiv.querySelectorAll('tr');
+         for (var i = 0; i < rows.length; i++) {
+             var td = rows[i].querySelector('td.visible-with-data');
+             var key = td ? td.id : '';
+             if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+                 rows[i].parentNode.removeChild(rows[i]);
+             }
+         }
+         return tempDiv.innerHTML;
+        }
+        // modify popup if contains media
+        function addClassToPopupIfMedia(content, popup) {
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            var imgTd = tempDiv.querySelector('td img');
+            if (imgTd) {
+                var src = imgTd.getAttribute('src');
+                if (/\.(jpg|jpeg|png|gif|bmp|webp|avif)$/i.test(src)) {
+                    popup._contentNode.classList.add('media');
+                    setTimeout(function() {
+                        popup.update();
+                    }, 10);
+                } else if (/\.(mp3|wav|ogg|aac)$/i.test(src)) {
+                    var audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.src = src;
+                    imgTd.parentNode.replaceChild(audio, imgTd);
+                    popup._contentNode.classList.add('media');
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else if (/\.(mp4|webm|ogg|mov)$/i.test(src)) {
+                    var video = document.createElement('video');
+                    video.controls = true;
+                    video.src = src;
+                    video.style.width = "400px";
+                    video.style.height = "300px";
+                    video.style.maxHeight = "60vh";
+                    video.style.maxWidth = "60vw";
+                    imgTd.parentNode.replaceChild(video, imgTd);
+                    popup._contentNode.classList.add('media');
+                    // Aggiorna il popup quando il video carica i metadati
+                    video.addEventListener('loadedmetadata', function() {
+                        popup.update();
+                    });
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else {
+                    popup._contentNode.classList.remove('media');
+                }
+            } else {
+                popup._contentNode.classList.remove('media');
+            }
+        }
+        var zoomControl = L.control.zoom({
+            position: 'topleft'
+        }).addTo(map);
+        var measureControl = new L.Control.Measure({
+            position: 'topleft',
+            primaryLengthUnit: 'meters',
+            secondaryLengthUnit: 'kilometers',
+            primaryAreaUnit: 'sqmeters',
+            secondaryAreaUnit: 'hectares'
+        });
+        measureControl.addTo(map);
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].innerHTML = '';
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].className += ' fas fa-ruler';
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+        }
+        map.createPane('pane_OpenTopoMap_0');
+        map.getPane('pane_OpenTopoMap_0').style.zIndex = 400;
+        var layer_OpenTopoMap_0 = L.tileLayer('https://tile.opentopomap.org/{z}/{x}/{y}.png', {
+            pane: 'pane_OpenTopoMap_0',
+            opacity: 1.0,
+            attribution: '',
+            minZoom: 3,
+            maxZoom: 11,
+            minNativeZoom: 0,
+            maxNativeZoom: 18
+        });
+        layer_OpenTopoMap_0;
+        map.addLayer(layer_OpenTopoMap_0);
+        function pop_geo_uniHERAKLION_1(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    if (typeof layer.closePopup == 'function') {
+                        layer.closePopup();
+                    } else {
+                        layer.eachLayer(function(feature){
+                            feature.closePopup()
+                        });
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['OBJECTID'] !== null ? autolinker.link(String(feature.properties['OBJECTID']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2"><strong>NEW</strong><br />' + (feature.properties['NEW'] !== null ? autolinker.link(String(feature.properties['NEW']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">FORMATION</th>\
+                        <td>' + (feature.properties['FORMATION'] !== null ? autolinker.link(String(feature.properties['FORMATION']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_geo_uniHERAKLION_1_0(feature) {
+            switch(String(feature.properties['NEW'])) {
+                case 'f':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(172,225,48,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'fo':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(229,193,35,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'ft':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(240,74,168,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'J-E':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(40,115,228,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'K-E':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(51,42,208,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'K.k':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(214,27,46,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'K.m':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(19,216,62,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Mk':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(82,203,221,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Mm.I':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(45,219,161,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'o':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(98,229,55,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Ph-T':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(195,16,201,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Q.al':
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(240,166,126,1.0)',
+                interactive: true,
+            }
+                    break;
+                default:
+                    return {
+                pane: 'pane_geo_uniHERAKLION_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(120,27,207,1.0)',
+                interactive: true,
+            }
+                    break;
+            }
+        }
+        map.createPane('pane_geo_uniHERAKLION_1');
+        map.getPane('pane_geo_uniHERAKLION_1').style.zIndex = 401;
+        map.getPane('pane_geo_uniHERAKLION_1').style['mix-blend-mode'] = 'normal';
+        var layer_geo_uniHERAKLION_1 = new L.geoJson(json_geo_uniHERAKLION_1, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_geo_uniHERAKLION_1',
+            layerName: 'layer_geo_uniHERAKLION_1',
+            pane: 'pane_geo_uniHERAKLION_1',
+            onEachFeature: pop_geo_uniHERAKLION_1,
+            style: style_geo_uniHERAKLION_1_0,
+        });
+        bounds_group.addLayer(layer_geo_uniHERAKLION_1);
+        map.addLayer(layer_geo_uniHERAKLION_1);
+        function pop_geo_uniCHANIA_2(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    if (typeof layer.closePopup == 'function') {
+                        layer.closePopup();
+                    } else {
+                        layer.eachLayer(function(feature){
+                            feature.closePopup()
+                        });
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['OBJECTID'] !== null ? autolinker.link(String(feature.properties['OBJECTID']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">NEW</th>\
+                        <td>' + (feature.properties['NEW'] !== null ? autolinker.link(String(feature.properties['NEW']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2"><strong>FORMATION</strong><br />' + (feature.properties['FORMATION'] !== null ? autolinker.link(String(feature.properties['FORMATION']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_geo_uniCHANIA_2_0(feature) {
+            switch(String(feature.properties['NEW'])) {
+                case '-':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(174,205,21,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'fo':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(36,233,144,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'ft':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(120,169,212,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'J-E':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(212,77,32,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'K-E':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(201,74,159,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'K.k':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(82,220,93,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Mk':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(200,95,218,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Mm.I':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(30,42,215,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'o':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(24,204,207,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Ph-T':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(213,82,110,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Q.al':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(131,76,214,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'T.br':
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(110,229,41,1.0)',
+                interactive: true,
+            }
+                    break;
+                default:
+                    return {
+                pane: 'pane_geo_uniCHANIA_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(228,182,65,1.0)',
+                interactive: true,
+            }
+                    break;
+            }
+        }
+        map.createPane('pane_geo_uniCHANIA_2');
+        map.getPane('pane_geo_uniCHANIA_2').style.zIndex = 402;
+        map.getPane('pane_geo_uniCHANIA_2').style['mix-blend-mode'] = 'normal';
+        var layer_geo_uniCHANIA_2 = new L.geoJson(json_geo_uniCHANIA_2, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_geo_uniCHANIA_2',
+            layerName: 'layer_geo_uniCHANIA_2',
+            pane: 'pane_geo_uniCHANIA_2',
+            onEachFeature: pop_geo_uniCHANIA_2,
+            style: style_geo_uniCHANIA_2_0,
+        });
+        bounds_group.addLayer(layer_geo_uniCHANIA_2);
+        map.addLayer(layer_geo_uniCHANIA_2);
+        function pop_geo_uniLASITHI_1_3(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    if (typeof layer.closePopup == 'function') {
+                        layer.closePopup();
+                    } else {
+                        layer.eachLayer(function(feature){
+                            feature.closePopup()
+                        });
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['OBJECTID'] !== null ? autolinker.link(String(feature.properties['OBJECTID']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2"><strong>NEW</strong><br />' + (feature.properties['NEW'] !== null ? autolinker.link(String(feature.properties['NEW']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">FORMATION</th>\
+                        <td>' + (feature.properties['FORMATION'] !== null ? autolinker.link(String(feature.properties['FORMATION']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_geo_uniLASITHI_1_3_0(feature) {
+            switch(String(feature.properties['NEW'])) {
+                case 'fo':
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(25,237,89,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'ft':
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(178,224,77,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'J-E':
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(221,85,110,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'K-E':
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(156,120,233,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'K.k':
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(180,17,216,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'K.m':
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(106,125,207,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Mk':
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(202,173,41,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Mm.I':
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(81,223,45,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'o':
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(210,137,103,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Ph-T':
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(227,72,178,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Q.al':
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(113,191,225,1.0)',
+                interactive: true,
+            }
+                    break;
+                default:
+                    return {
+                pane: 'pane_geo_uniLASITHI_1_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(14,208,169,1.0)',
+                interactive: true,
+            }
+                    break;
+            }
+        }
+        map.createPane('pane_geo_uniLASITHI_1_3');
+        map.getPane('pane_geo_uniLASITHI_1_3').style.zIndex = 403;
+        map.getPane('pane_geo_uniLASITHI_1_3').style['mix-blend-mode'] = 'normal';
+        var layer_geo_uniLASITHI_1_3 = new L.geoJson(json_geo_uniLASITHI_1_3, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_geo_uniLASITHI_1_3',
+            layerName: 'layer_geo_uniLASITHI_1_3',
+            pane: 'pane_geo_uniLASITHI_1_3',
+            onEachFeature: pop_geo_uniLASITHI_1_3,
+            style: style_geo_uniLASITHI_1_3_0,
+        });
+        bounds_group.addLayer(layer_geo_uniLASITHI_1_3);
+        map.addLayer(layer_geo_uniLASITHI_1_3);
+        function pop_geo_uniRETHYMNON_4(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    if (typeof layer.closePopup == 'function') {
+                        layer.closePopup();
+                    } else {
+                        layer.eachLayer(function(feature){
+                            feature.closePopup()
+                        });
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['OBJECTID'] !== null ? autolinker.link(String(feature.properties['OBJECTID']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">NEW</th>\
+                        <td>' + (feature.properties['NEW'] !== null ? autolinker.link(String(feature.properties['NEW']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2"><strong>FORMATION</strong><br />' + (feature.properties['FORMATION'] !== null ? autolinker.link(String(feature.properties['FORMATION']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_geo_uniRETHYMNON_4_0(feature) {
+            switch(String(feature.properties['NEW'])) {
+                case 'f':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(203,202,116,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'fo':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(190,96,209,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'ft':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(233,16,175,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'J-E':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(94,213,175,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'K-E':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(156,212,73,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'K.k':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(79,137,204,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'K.m':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(236,109,93,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Mk':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(123,65,205,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Mm.I':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(113,115,226,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'o':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(127,235,154,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Ph-T':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(215,146,62,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'Q.al':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(64,237,30,1.0)',
+                interactive: true,
+            }
+                    break;
+                case 'T.br':
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(70,214,233,1.0)',
+                interactive: true,
+            }
+                    break;
+                default:
+                    return {
+                pane: 'pane_geo_uniRETHYMNON_4',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(200,104,133,1.0)',
+                interactive: true,
+            }
+                    break;
+            }
+        }
+        map.createPane('pane_geo_uniRETHYMNON_4');
+        map.getPane('pane_geo_uniRETHYMNON_4').style.zIndex = 404;
+        map.getPane('pane_geo_uniRETHYMNON_4').style['mix-blend-mode'] = 'normal';
+        var layer_geo_uniRETHYMNON_4 = new L.geoJson(json_geo_uniRETHYMNON_4, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_geo_uniRETHYMNON_4',
+            layerName: 'layer_geo_uniRETHYMNON_4',
+            pane: 'pane_geo_uniRETHYMNON_4',
+            onEachFeature: pop_geo_uniRETHYMNON_4,
+            style: style_geo_uniRETHYMNON_4_0,
+        });
+        bounds_group.addLayer(layer_geo_uniRETHYMNON_4);
+        map.addLayer(layer_geo_uniRETHYMNON_4);
+        const url = {"Nominatim OSM": "https://nominatim.openstreetmap.org/search?format=geojson&addressdetails=1&",
+        "France BAN": "https://api-adresse.data.gouv.fr/search/?"}
+        var photonControl = L.control.photon({
+            url: url["Nominatim OSM"],
+            feedbackLabel: '',
+            position: 'topleft',
+            includePosition: true,
+            initial: true,
+            // resultsHandler: myHandler,
+        }).addTo(map);
+        photonControl._container.childNodes[0].style.borderRadius="10px"
+        // Create a variable to store the geoJSON data
+        var x = null;
+        // Create a variable to store the marker
+        var marker = null;
+        // Add an event listener to the Photon control to create a marker from the returned geoJSON data
+        var z = null;
+        photonControl.on('selected', function(e) {
+            console.log(photonControl.search.resultsContainer);
+            if (x != null) {
+                map.removeLayer(obj3.marker);
+                map.removeLayer(x);
+            }
+            obj2.gcd = e.choice;
+            x = L.geoJSON(obj2.gcd).addTo(map);
+            var label = typeof obj2.gcd.properties.label === 'undefined' ? obj2.gcd.properties.display_name : obj2.gcd.properties.label;
+            obj3.marker = L.marker(x.getLayers()[0].getLatLng()).bindPopup(label).addTo(map);
+            map.setView(x.getLayers()[0].getLatLng(), 17);
+            z = typeof e.choice.properties.label === 'undefined'? e.choice.properties.display_name : e.choice.properties.label;
+            console.log(e);
+            e.target.input.value = z;
+        });
+        var search = document.getElementsByClassName("leaflet-photon leaflet-control")[0];
+        search.classList.add("leaflet-control-search")
+        search.style.display = "flex";
+        search.style.backgroundColor="rgba(255,255,255,0.5)" 
+
+        // Create the new button element
+        var button = document.createElement("div");
+        button.id = "gcd-button-control";
+        button.className = "gcd-gl-btn fa fa-search search-button";
+
+        // Insert the button at the beginning of the search control
+        search.insertBefore(button, search.firstChild);
+        last = search.lastChild;
+        last.style.display = "none";
+        button.addEventListener("click", function (e) {
+            if (last.style.display === "none") {
+                last.style.display = "block";
+            } else {
+                last.style.display = "none";
+            }
+        });
+        var overlaysTree = [
+            {label: 'geo_uniRETHYMNON<br /><table><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_f0.png" /></td><td>f</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_fo1.png" /></td><td>fo</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_ft2.png" /></td><td>ft</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_JE3.png" /></td><td>J-E</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_KE4.png" /></td><td>K-E</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_Kk5.png" /></td><td>K.k</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_Km6.png" /></td><td>K.m</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_Mk7.png" /></td><td>Mk</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_MmI8.png" /></td><td>Mm.I</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_o9.png" /></td><td>o</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_PhT10.png" /></td><td>Ph-T</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_Qal11.png" /></td><td>Q.al</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_Tbr12.png" /></td><td>T.br</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniRETHYMNON_4_13.png" /></td><td></td></tr></table>', layer: layer_geo_uniRETHYMNON_4},
+            {label: 'geo_uniLASITHI_1<br /><table><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_fo0.png" /></td><td>fo</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_ft1.png" /></td><td>ft</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_JE2.png" /></td><td>J-E</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_KE3.png" /></td><td>K-E</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_Kk4.png" /></td><td>K.k</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_Km5.png" /></td><td>K.m</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_Mk6.png" /></td><td>Mk</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_MmI7.png" /></td><td>Mm.I</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_o8.png" /></td><td>o</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_PhT9.png" /></td><td>Ph-T</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_Qal10.png" /></td><td>Q.al</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniLASITHI_1_3_11.png" /></td><td></td></tr></table>', layer: layer_geo_uniLASITHI_1_3},
+            {label: 'geo_uniCHANIA<br /><table><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_0.png" /></td><td>-</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_fo1.png" /></td><td>fo</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_ft2.png" /></td><td>ft</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_JE3.png" /></td><td>J-E</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_KE4.png" /></td><td>K-E</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_Kk5.png" /></td><td>K.k</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_Mk6.png" /></td><td>Mk</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_MmI7.png" /></td><td>Mm.I</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_o8.png" /></td><td>o</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_PhT9.png" /></td><td>Ph-T</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_Qal10.png" /></td><td>Q.al</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_Tbr11.png" /></td><td>T.br</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniCHANIA_2_12.png" /></td><td></td></tr></table>', layer: layer_geo_uniCHANIA_2},
+            {label: 'geo_uniHERAKLION<br /><table><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_f0.png" /></td><td>f</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_fo1.png" /></td><td>fo</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_ft2.png" /></td><td>ft</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_JE3.png" /></td><td>J-E</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_KE4.png" /></td><td>K-E</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_Kk5.png" /></td><td>K.k</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_Km6.png" /></td><td>K.m</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_Mk7.png" /></td><td>Mk</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_MmI8.png" /></td><td>Mm.I</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_o9.png" /></td><td>o</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_PhT10.png" /></td><td>Ph-T</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_Qal11.png" /></td><td>Q.al</td></tr><tr><td style="text-align: center;"><img src="legend/geo_uniHERAKLION_1_12.png" /></td><td></td></tr></table>', layer: layer_geo_uniHERAKLION_1},
+            {label: "Open Topo Map", layer: layer_OpenTopoMap_0},]
+        var lay = L.control.layers.tree(null, overlaysTree,{
+            //namedToggle: true,
+            //selectorBack: false,
+            //closedSymbol: '&#8862; &#x1f5c0;',
+            //openedSymbol: '&#8863; &#x1f5c1;',
+            //collapseAll: 'Collapse all',
+            //expandAll: 'Expand all',
+            collapsed: true,
+        });
+        lay.addTo(map);
+        setBounds();
+        var i = 0;
+        layer_geo_uniHERAKLION_1.eachLayer(function(layer) {
+            var context = {
+                feature: layer.feature,
+                variables: {}
+            };
+            layer.bindTooltip((layer.feature.properties['NEW'] !== null?String('<div style="color: #323232; font-size: 10pt; font-family: \'Open Sans\', sans-serif;">' + layer.feature.properties['NEW']) + '</div>':''), {permanent: true, offset: [-0, -16], className: 'css_geo_uniHERAKLION_1'});
+            labels.push(layer);
+            totalMarkers += 1;
+              layer.added = true;
+              addLabel(layer, i);
+              i++;
+        });
+        var i = 0;
+        layer_geo_uniCHANIA_2.eachLayer(function(layer) {
+            var context = {
+                feature: layer.feature,
+                variables: {}
+            };
+            layer.bindTooltip((layer.feature.properties['NEW'] !== null?String('<div style="color: #323232; font-size: 10pt; font-family: \'Open Sans\', sans-serif;">' + layer.feature.properties['NEW']) + '</div>':''), {permanent: true, offset: [-0, -16], className: 'css_geo_uniCHANIA_2'});
+            labels.push(layer);
+            totalMarkers += 1;
+              layer.added = true;
+              addLabel(layer, i);
+              i++;
+        });
+        var i = 0;
+        layer_geo_uniLASITHI_1_3.eachLayer(function(layer) {
+            var context = {
+                feature: layer.feature,
+                variables: {}
+            };
+            layer.bindTooltip((layer.feature.properties['NEW'] !== null?String('<div style="color: #323232; font-size: 10pt; font-family: \'Open Sans\', sans-serif;">' + layer.feature.properties['NEW']) + '</div>':''), {permanent: true, offset: [-0, -16], className: 'css_geo_uniLASITHI_1_3'});
+            labels.push(layer);
+            totalMarkers += 1;
+              layer.added = true;
+              addLabel(layer, i);
+              i++;
+        });
+        var i = 0;
+        layer_geo_uniRETHYMNON_4.eachLayer(function(layer) {
+            var context = {
+                feature: layer.feature,
+                variables: {}
+            };
+            layer.bindTooltip((layer.feature.properties['NEW'] !== null?String('<div style="color: #323232; font-size: 10pt; font-family: \'Open Sans\', sans-serif;">' + layer.feature.properties['NEW']) + '</div>':''), {permanent: true, offset: [-0, -16], className: 'css_geo_uniRETHYMNON_4'});
+            labels.push(layer);
+            totalMarkers += 1;
+              layer.added = true;
+              addLabel(layer, i);
+              i++;
+        });
+        map.addControl(new L.Control.Search({
+            layer: layer_geo_uniRETHYMNON_4,
+            initial: false,
+            hideMarkerOnCollapse: true,
+            propertyName: 'NEW'}));
+        if (typeof url === 'undefined') {
+            document.getElementsByClassName('search-button')[0].className += ' fa fa-binoculars';
+        } else {
+            document.getElementsByClassName('search-button')[1].className += ' fa fa-binoculars';
+        }
+        resetLabels([layer_geo_uniHERAKLION_1,layer_geo_uniCHANIA_2,layer_geo_uniLASITHI_1_3,layer_geo_uniRETHYMNON_4]);
+        map.on("zoomend", function(){
+            resetLabels([layer_geo_uniHERAKLION_1,layer_geo_uniCHANIA_2,layer_geo_uniLASITHI_1_3,layer_geo_uniRETHYMNON_4]);
+        });
+        map.on("layeradd", function(){
+            resetLabels([layer_geo_uniHERAKLION_1,layer_geo_uniCHANIA_2,layer_geo_uniLASITHI_1_3,layer_geo_uniRETHYMNON_4]);
+        });
+        map.on("layerremove", function(){
+            resetLabels([layer_geo_uniHERAKLION_1,layer_geo_uniCHANIA_2,layer_geo_uniLASITHI_1_3,layer_geo_uniRETHYMNON_4]);
+        });
+        </script>        
+    </body>
+</html>
