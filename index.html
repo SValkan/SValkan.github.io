@@ -1,0 +1,1277 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <link rel="stylesheet" href="css/leaflet.css">
+        <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+        <link rel="stylesheet" href="css/qgis2web.css">
+        <link rel="stylesheet" href="css/fontawesome-all.min.css">
+        <link rel="stylesheet" href="css/leaflet.photon.css">
+        <link rel="stylesheet" href="css/leaflet-measure.css">
+        <style>
+        html, body, #map {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+        }
+        </style>
+        <title>GreDaSS / NOAFaults</title>
+    </head>
+    <body>
+        <div id="map">
+        </div>
+        <script src="js/qgis2web_expressions.js"></script>
+        <script src="js/leaflet.js"></script>
+        <script src="js/L.Control.Layers.Tree.min.js"></script>
+        <script src="js/multi-style-layer.js"></script>
+        <script src="js/leaflet.rotatedMarker.js"></script>
+        <script src="js/leaflet.pattern.js"></script>
+        <script src="js/leaflet-hash.js"></script>
+        <script src="js/Autolinker.min.js"></script>
+        <script src="js/rbush.min.js"></script>
+        <script src="js/labelgun.min.js"></script>
+        <script src="js/labels.js"></script>
+        <script src="js/leaflet.photon.js"></script>
+        <script src="js/leaflet-measure.js"></script>
+        <script src="data/GreDaSSSubductionZone_1.js"></script>
+        <script src="data/GreDaSSSubductioncontours_2.js"></script>
+        <script src="data/GreDaSSSubductionZoneTop_3.js"></script>
+        <script src="data/GreDaSSCompositeSeismogenicSourcesPlanes_4.js"></script>
+        <script src="data/GreDaSSCompositeSeismogenicSourcesTop_5.js"></script>
+        <script src="data/GreDaSSIndividualSeismogenicSources_6.js"></script>
+        <script src="data/GreDaSSDebatedSeismogenicSources_7.js"></script>
+        <script src="data/GreDaSSCompositeSeismogenicSourcesContours_8.js"></script>
+        <script src="data/NOAFaultsv7_attr_9.js"></script>
+        <script>
+        var map = L.map('map', {
+            zoomControl:false, maxZoom:22, minZoom:3
+        }).fitBounds([[32.65135382006748,11.76808793103873],[43.08421913267891,36.82548502389573]]);
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+        var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+        // remove popup's row if "visible-with-data"
+        function removeEmptyRowsFromPopupContent(content, feature) {
+         var tempDiv = document.createElement('div');
+         tempDiv.innerHTML = content;
+         var rows = tempDiv.querySelectorAll('tr');
+         for (var i = 0; i < rows.length; i++) {
+             var td = rows[i].querySelector('td.visible-with-data');
+             var key = td ? td.id : '';
+             if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+                 rows[i].parentNode.removeChild(rows[i]);
+             }
+         }
+         return tempDiv.innerHTML;
+        }
+        // modify popup if contains media
+        function addClassToPopupIfMedia(content, popup) {
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            var imgTd = tempDiv.querySelector('td img');
+            if (imgTd) {
+                var src = imgTd.getAttribute('src');
+                if (/\.(jpg|jpeg|png|gif|bmp|webp|avif)$/i.test(src)) {
+                    popup._contentNode.classList.add('media');
+                    setTimeout(function() {
+                        popup.update();
+                    }, 10);
+                } else if (/\.(mp3|wav|ogg|aac)$/i.test(src)) {
+                    var audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.src = src;
+                    imgTd.parentNode.replaceChild(audio, imgTd);
+                    popup._contentNode.classList.add('media');
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else if (/\.(mp4|webm|ogg|mov)$/i.test(src)) {
+                    var video = document.createElement('video');
+                    video.controls = true;
+                    video.src = src;
+                    video.style.width = "400px";
+                    video.style.height = "300px";
+                    video.style.maxHeight = "60vh";
+                    video.style.maxWidth = "60vw";
+                    imgTd.parentNode.replaceChild(video, imgTd);
+                    popup._contentNode.classList.add('media');
+                    // Aggiorna il popup quando il video carica i metadati
+                    video.addEventListener('loadedmetadata', function() {
+                        popup.update();
+                    });
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else {
+                    popup._contentNode.classList.remove('media');
+                }
+            } else {
+                popup._contentNode.classList.remove('media');
+            }
+        }
+        var title = new L.Control({'position':'topright'});
+        title.onAdd = function (map) {
+            this._div = L.DomUtil.create('div', 'info');
+            this.update();
+            return this._div;
+        };
+        title.update = function () {
+            this._div.innerHTML = '<h2>GreDaSS / NOAFaults</h2>';
+        };
+        title.addTo(map);
+        var zoomControl = L.control.zoom({
+            position: 'topleft'
+        }).addTo(map);
+        var measureControl = new L.Control.Measure({
+            position: 'topleft',
+            primaryLengthUnit: 'meters',
+            secondaryLengthUnit: 'kilometers',
+            primaryAreaUnit: 'sqmeters',
+            secondaryAreaUnit: 'hectares'
+        });
+        measureControl.addTo(map);
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].innerHTML = '';
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].className += ' fas fa-ruler';
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+        }
+        map.createPane('pane_CartoDark_0');
+        map.getPane('pane_CartoDark_0').style.zIndex = 400;
+        var layer_CartoDark_0 = L.tileLayer('https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+            pane: 'pane_CartoDark_0',
+            opacity: 1.0,
+            attribution: '',
+            minZoom: 3,
+            maxZoom: 22,
+            minNativeZoom: 0,
+            maxNativeZoom: 22
+        });
+        layer_CartoDark_0;
+        map.addLayer(layer_CartoDark_0);
+        function pop_GreDaSSSubductionZone_1(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['idsource'] !== null ? autolinker.link(String(feature.properties['idsource']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['sourcename'] !== null ? autolinker.link(String(feature.properties['sourcename']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['mindepth'] !== null ? autolinker.link(String(feature.properties['mindepth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['maxdepth'] !== null ? autolinker.link(String(feature.properties['maxdepth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['dipdir'] !== null ? autolinker.link(String(feature.properties['dipdir']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convazmax'] !== null ? autolinker.link(String(feature.properties['convazmax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convazmin'] !== null ? autolinker.link(String(feature.properties['convazmin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convrmin'] !== null ? autolinker.link(String(feature.properties['convrmin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convrmax'] !== null ? autolinker.link(String(feature.properties['convrmax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['maxmag'] !== null ? autolinker.link(String(feature.properties['maxmag']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['created'] !== null ? autolinker.link(String(feature.properties['created']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['updated'] !== null ? autolinker.link(String(feature.properties['updated']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['mindepthq'] !== null ? autolinker.link(String(feature.properties['mindepthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['maxdepthq'] !== null ? autolinker.link(String(feature.properties['maxdepthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['dipdirq'] !== null ? autolinker.link(String(feature.properties['dipdirq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convazq'] !== null ? autolinker.link(String(feature.properties['convazq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convrq'] !== null ? autolinker.link(String(feature.properties['convrq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['maxmagq'] !== null ? autolinker.link(String(feature.properties['maxmagq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['linktoinfo'] !== null ? autolinker.link(String(feature.properties['linktoinfo']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_GreDaSSSubductionZone_1_0() {
+            return {
+                pane: 'pane_GreDaSSSubductionZone_1',
+                opacity: 1,
+                color: 'rgba(255,255,255,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 2.0, 
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        map.createPane('pane_GreDaSSSubductionZone_1');
+        map.getPane('pane_GreDaSSSubductionZone_1').style.zIndex = 401;
+        map.getPane('pane_GreDaSSSubductionZone_1').style['mix-blend-mode'] = 'normal';
+        var layer_GreDaSSSubductionZone_1 = new L.geoJson(json_GreDaSSSubductionZone_1, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_GreDaSSSubductionZone_1',
+            layerName: 'layer_GreDaSSSubductionZone_1',
+            pane: 'pane_GreDaSSSubductionZone_1',
+            onEachFeature: pop_GreDaSSSubductionZone_1,
+            style: style_GreDaSSSubductionZone_1_0,
+        });
+        bounds_group.addLayer(layer_GreDaSSSubductionZone_1);
+        function pop_GreDaSSSubductioncontours_2(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <th scope="row">idsource</th>\
+                        <td>' + (feature.properties['idsource'] !== null ? autolinker.link(String(feature.properties['idsource']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">depth</th>\
+                        <td>' + (feature.properties['depth'] !== null ? autolinker.link(String(feature.properties['depth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">linktoinfo</th>\
+                        <td>' + (feature.properties['linktoinfo'] !== null ? autolinker.link(String(feature.properties['linktoinfo']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_GreDaSSSubductioncontours_2_0() {
+            return {
+                pane: 'pane_GreDaSSSubductioncontours_2',
+                opacity: 1,
+                color: 'rgba(253,252,251,1.0)',
+                dashArray: '4.0,2.0',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        map.createPane('pane_GreDaSSSubductioncontours_2');
+        map.getPane('pane_GreDaSSSubductioncontours_2').style.zIndex = 402;
+        map.getPane('pane_GreDaSSSubductioncontours_2').style['mix-blend-mode'] = 'normal';
+        var layer_GreDaSSSubductioncontours_2 = new L.geoJson(json_GreDaSSSubductioncontours_2, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_GreDaSSSubductioncontours_2',
+            layerName: 'layer_GreDaSSSubductioncontours_2',
+            pane: 'pane_GreDaSSSubductioncontours_2',
+            onEachFeature: pop_GreDaSSSubductioncontours_2,
+            style: style_GreDaSSSubductioncontours_2_0,
+        });
+        bounds_group.addLayer(layer_GreDaSSSubductioncontours_2);
+        function pop_GreDaSSSubductionZoneTop_3(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['LAYER'] !== null ? autolinker.link(String(feature.properties['LAYER']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['idsource'] !== null ? autolinker.link(String(feature.properties['idsource']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['sourcename'] !== null ? autolinker.link(String(feature.properties['sourcename']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['mindepth'] !== null ? autolinker.link(String(feature.properties['mindepth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['maxdepth'] !== null ? autolinker.link(String(feature.properties['maxdepth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['dipdir'] !== null ? autolinker.link(String(feature.properties['dipdir']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convazmax'] !== null ? autolinker.link(String(feature.properties['convazmax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convazmin'] !== null ? autolinker.link(String(feature.properties['convazmin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convrmin'] !== null ? autolinker.link(String(feature.properties['convrmin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convrmax'] !== null ? autolinker.link(String(feature.properties['convrmax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['maxmag'] !== null ? autolinker.link(String(feature.properties['maxmag']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['created'] !== null ? autolinker.link(String(feature.properties['created']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['updated'] !== null ? autolinker.link(String(feature.properties['updated']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['mindepthq'] !== null ? autolinker.link(String(feature.properties['mindepthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['maxdepthq'] !== null ? autolinker.link(String(feature.properties['maxdepthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['dipdirq'] !== null ? autolinker.link(String(feature.properties['dipdirq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convazq'] !== null ? autolinker.link(String(feature.properties['convazq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['convrq'] !== null ? autolinker.link(String(feature.properties['convrq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['maxmagq'] !== null ? autolinker.link(String(feature.properties['maxmagq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['linktoinfo'] !== null ? autolinker.link(String(feature.properties['linktoinfo']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_GreDaSSSubductionZoneTop_3_0() {
+            return {
+                pane: 'pane_GreDaSSSubductionZoneTop_3',
+                opacity: 1,
+                color: 'rgba(255,255,255,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 3.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        function style_GreDaSSSubductionZoneTop_3_1() {
+            return {
+                pane: 'pane_GreDaSSSubductionZoneTop_3',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_GreDaSSSubductionZoneTop_3');
+        map.getPane('pane_GreDaSSSubductionZoneTop_3').style.zIndex = 403;
+        map.getPane('pane_GreDaSSSubductionZoneTop_3').style['mix-blend-mode'] = 'normal';
+        var layer_GreDaSSSubductionZoneTop_3 = new L.geoJson.multiStyle(json_GreDaSSSubductionZoneTop_3, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_GreDaSSSubductionZoneTop_3',
+            layerName: 'layer_GreDaSSSubductionZoneTop_3',
+            pane: 'pane_GreDaSSSubductionZoneTop_3',
+            onEachFeature: pop_GreDaSSSubductionZoneTop_3,
+            styles: [style_GreDaSSSubductionZoneTop_3_0,style_GreDaSSSubductionZoneTop_3_1,]
+        });
+        bounds_group.addLayer(layer_GreDaSSSubductionZoneTop_3);
+        map.addLayer(layer_GreDaSSSubductionZoneTop_3);
+        function pop_GreDaSSCompositeSeismogenicSourcesPlanes_4(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2"><strong>idsource</strong><br />' + (feature.properties['idsource'] !== null ? autolinker.link(String(feature.properties['idsource']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">sourcename</th>\
+                        <td>' + (feature.properties['sourcename'] !== null ? autolinker.link(String(feature.properties['sourcename']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">mindepth</th>\
+                        <td>' + (feature.properties['mindepth'] !== null ? autolinker.link(String(feature.properties['mindepth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxdepth</th>\
+                        <td>' + (feature.properties['maxdepth'] !== null ? autolinker.link(String(feature.properties['maxdepth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">strikemin</th>\
+                        <td>' + (feature.properties['strikemin'] !== null ? autolinker.link(String(feature.properties['strikemin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">strikemax</th>\
+                        <td>' + (feature.properties['strikemax'] !== null ? autolinker.link(String(feature.properties['strikemax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">dipmin</th>\
+                        <td>' + (feature.properties['dipmin'] !== null ? autolinker.link(String(feature.properties['dipmin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">dipmax</th>\
+                        <td>' + (feature.properties['dipmax'] !== null ? autolinker.link(String(feature.properties['dipmax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">rakemin</th>\
+                        <td>' + (feature.properties['rakemin'] !== null ? autolinker.link(String(feature.properties['rakemin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">rakemax</th>\
+                        <td>' + (feature.properties['rakemax'] !== null ? autolinker.link(String(feature.properties['rakemax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">srmin</th>\
+                        <td>' + (feature.properties['srmin'] !== null ? autolinker.link(String(feature.properties['srmin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">srmax</th>\
+                        <td>' + (feature.properties['srmax'] !== null ? autolinker.link(String(feature.properties['srmax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxmag</th>\
+                        <td>' + (feature.properties['maxmag'] !== null ? autolinker.link(String(feature.properties['maxmag']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">created</th>\
+                        <td>' + (feature.properties['created'] !== null ? autolinker.link(String(feature.properties['created']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">updated</th>\
+                        <td>' + (feature.properties['updated'] !== null ? autolinker.link(String(feature.properties['updated']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">mindepthq</th>\
+                        <td>' + (feature.properties['mindepthq'] !== null ? autolinker.link(String(feature.properties['mindepthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxdepthq</th>\
+                        <td>' + (feature.properties['maxdepthq'] !== null ? autolinker.link(String(feature.properties['maxdepthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">strikeq</th>\
+                        <td>' + (feature.properties['strikeq'] !== null ? autolinker.link(String(feature.properties['strikeq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">dipq</th>\
+                        <td>' + (feature.properties['dipq'] !== null ? autolinker.link(String(feature.properties['dipq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">rakeq</th>\
+                        <td>' + (feature.properties['rakeq'] !== null ? autolinker.link(String(feature.properties['rakeq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">sliprateq</th>\
+                        <td>' + (feature.properties['sliprateq'] !== null ? autolinker.link(String(feature.properties['sliprateq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxmagq</th>\
+                        <td>' + (feature.properties['maxmagq'] !== null ? autolinker.link(String(feature.properties['maxmagq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">linktoinfo</th>\
+                        <td>' + (feature.properties['linktoinfo'] !== null ? autolinker.link(String(feature.properties['linktoinfo']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_GreDaSSCompositeSeismogenicSourcesPlanes_4_0() {
+            return {
+                pane: 'pane_GreDaSSCompositeSeismogenicSourcesPlanes_4',
+                opacity: 1,
+                color: 'rgba(255,0,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,203,0,0.5019607843137255)',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_GreDaSSCompositeSeismogenicSourcesPlanes_4');
+        map.getPane('pane_GreDaSSCompositeSeismogenicSourcesPlanes_4').style.zIndex = 404;
+        map.getPane('pane_GreDaSSCompositeSeismogenicSourcesPlanes_4').style['mix-blend-mode'] = 'normal';
+        var layer_GreDaSSCompositeSeismogenicSourcesPlanes_4 = new L.geoJson(json_GreDaSSCompositeSeismogenicSourcesPlanes_4, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_GreDaSSCompositeSeismogenicSourcesPlanes_4',
+            layerName: 'layer_GreDaSSCompositeSeismogenicSourcesPlanes_4',
+            pane: 'pane_GreDaSSCompositeSeismogenicSourcesPlanes_4',
+            onEachFeature: pop_GreDaSSCompositeSeismogenicSourcesPlanes_4,
+            style: style_GreDaSSCompositeSeismogenicSourcesPlanes_4_0,
+        });
+        bounds_group.addLayer(layer_GreDaSSCompositeSeismogenicSourcesPlanes_4);
+        map.addLayer(layer_GreDaSSCompositeSeismogenicSourcesPlanes_4);
+        function pop_GreDaSSCompositeSeismogenicSourcesTop_5(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2"><strong>idsource</strong><br />' + (feature.properties['idsource'] !== null ? autolinker.link(String(feature.properties['idsource']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">sourcename</th>\
+                        <td>' + (feature.properties['sourcename'] !== null ? autolinker.link(String(feature.properties['sourcename']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">mindepth</th>\
+                        <td>' + (feature.properties['mindepth'] !== null ? autolinker.link(String(feature.properties['mindepth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxdepth</th>\
+                        <td>' + (feature.properties['maxdepth'] !== null ? autolinker.link(String(feature.properties['maxdepth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">strikemin</th>\
+                        <td>' + (feature.properties['strikemin'] !== null ? autolinker.link(String(feature.properties['strikemin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">strikemax</th>\
+                        <td>' + (feature.properties['strikemax'] !== null ? autolinker.link(String(feature.properties['strikemax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">dipmin</th>\
+                        <td>' + (feature.properties['dipmin'] !== null ? autolinker.link(String(feature.properties['dipmin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">dipmax</th>\
+                        <td>' + (feature.properties['dipmax'] !== null ? autolinker.link(String(feature.properties['dipmax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">rakemin</th>\
+                        <td>' + (feature.properties['rakemin'] !== null ? autolinker.link(String(feature.properties['rakemin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">rakemax</th>\
+                        <td>' + (feature.properties['rakemax'] !== null ? autolinker.link(String(feature.properties['rakemax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">srmin</th>\
+                        <td>' + (feature.properties['srmin'] !== null ? autolinker.link(String(feature.properties['srmin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">srmax</th>\
+                        <td>' + (feature.properties['srmax'] !== null ? autolinker.link(String(feature.properties['srmax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxmag</th>\
+                        <td>' + (feature.properties['maxmag'] !== null ? autolinker.link(String(feature.properties['maxmag']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">created</th>\
+                        <td>' + (feature.properties['created'] !== null ? autolinker.link(String(feature.properties['created']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">updated</th>\
+                        <td>' + (feature.properties['updated'] !== null ? autolinker.link(String(feature.properties['updated']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">mindepthq</th>\
+                        <td>' + (feature.properties['mindepthq'] !== null ? autolinker.link(String(feature.properties['mindepthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxdepthq</th>\
+                        <td>' + (feature.properties['maxdepthq'] !== null ? autolinker.link(String(feature.properties['maxdepthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">strikeq</th>\
+                        <td>' + (feature.properties['strikeq'] !== null ? autolinker.link(String(feature.properties['strikeq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">dipq</th>\
+                        <td>' + (feature.properties['dipq'] !== null ? autolinker.link(String(feature.properties['dipq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">rakeq</th>\
+                        <td>' + (feature.properties['rakeq'] !== null ? autolinker.link(String(feature.properties['rakeq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">sliprateq</th>\
+                        <td>' + (feature.properties['sliprateq'] !== null ? autolinker.link(String(feature.properties['sliprateq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxmagq</th>\
+                        <td>' + (feature.properties['maxmagq'] !== null ? autolinker.link(String(feature.properties['maxmagq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">linktoinfo</th>\
+                        <td>' + (feature.properties['linktoinfo'] !== null ? autolinker.link(String(feature.properties['linktoinfo']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_GreDaSSCompositeSeismogenicSourcesTop_5_0() {
+            return {
+                pane: 'pane_GreDaSSCompositeSeismogenicSourcesTop_5',
+                opacity: 1,
+                color: 'rgba(255,3,0,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 2.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        map.createPane('pane_GreDaSSCompositeSeismogenicSourcesTop_5');
+        map.getPane('pane_GreDaSSCompositeSeismogenicSourcesTop_5').style.zIndex = 405;
+        map.getPane('pane_GreDaSSCompositeSeismogenicSourcesTop_5').style['mix-blend-mode'] = 'normal';
+        var layer_GreDaSSCompositeSeismogenicSourcesTop_5 = new L.geoJson(json_GreDaSSCompositeSeismogenicSourcesTop_5, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_GreDaSSCompositeSeismogenicSourcesTop_5',
+            layerName: 'layer_GreDaSSCompositeSeismogenicSourcesTop_5',
+            pane: 'pane_GreDaSSCompositeSeismogenicSourcesTop_5',
+            onEachFeature: pop_GreDaSSCompositeSeismogenicSourcesTop_5,
+            style: style_GreDaSSCompositeSeismogenicSourcesTop_5_0,
+        });
+        bounds_group.addLayer(layer_GreDaSSCompositeSeismogenicSourcesTop_5);
+        map.addLayer(layer_GreDaSSCompositeSeismogenicSourcesTop_5);
+        function pop_GreDaSSIndividualSeismogenicSources_6(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2"><strong>idsource</strong><br />' + (feature.properties['idsource'] !== null ? autolinker.link(String(feature.properties['idsource']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">sourcename</th>\
+                        <td>' + (feature.properties['sourcename'] !== null ? autolinker.link(String(feature.properties['sourcename']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">length</th>\
+                        <td>' + (feature.properties['length'] !== null ? autolinker.link(String(feature.properties['length']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">width</th>\
+                        <td>' + (feature.properties['width'] !== null ? autolinker.link(String(feature.properties['width']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">mindepth</th>\
+                        <td>' + (feature.properties['mindepth'] !== null ? autolinker.link(String(feature.properties['mindepth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxdepth</th>\
+                        <td>' + (feature.properties['maxdepth'] !== null ? autolinker.link(String(feature.properties['maxdepth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">strike</th>\
+                        <td>' + (feature.properties['strike'] !== null ? autolinker.link(String(feature.properties['strike']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">dip</th>\
+                        <td>' + (feature.properties['dip'] !== null ? autolinker.link(String(feature.properties['dip']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">rake</th>\
+                        <td>' + (feature.properties['rake'] !== null ? autolinker.link(String(feature.properties['rake']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">avgdispl</th>\
+                        <td>' + (feature.properties['avgdispl'] !== null ? autolinker.link(String(feature.properties['avgdispl']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">srmin</th>\
+                        <td>' + (feature.properties['srmin'] !== null ? autolinker.link(String(feature.properties['srmin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">srmax</th>\
+                        <td>' + (feature.properties['srmax'] !== null ? autolinker.link(String(feature.properties['srmax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">recintmin</th>\
+                        <td>' + (feature.properties['recintmin'] !== null ? autolinker.link(String(feature.properties['recintmin']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">recintmax</th>\
+                        <td>' + (feature.properties['recintmax'] !== null ? autolinker.link(String(feature.properties['recintmax']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">latesteq</th>\
+                        <td>' + (feature.properties['latesteq'] !== null ? autolinker.link(String(feature.properties['latesteq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxmag</th>\
+                        <td>' + (feature.properties['maxmag'] !== null ? autolinker.link(String(feature.properties['maxmag']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">latul</th>\
+                        <td>' + (feature.properties['latul'] !== null ? autolinker.link(String(feature.properties['latul']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">lonul</th>\
+                        <td>' + (feature.properties['lonul'] !== null ? autolinker.link(String(feature.properties['lonul']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">latur</th>\
+                        <td>' + (feature.properties['latur'] !== null ? autolinker.link(String(feature.properties['latur']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">lonur</th>\
+                        <td>' + (feature.properties['lonur'] !== null ? autolinker.link(String(feature.properties['lonur']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">latlr</th>\
+                        <td>' + (feature.properties['latlr'] !== null ? autolinker.link(String(feature.properties['latlr']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">lonlr</th>\
+                        <td>' + (feature.properties['lonlr'] !== null ? autolinker.link(String(feature.properties['lonlr']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">latll</th>\
+                        <td>' + (feature.properties['latll'] !== null ? autolinker.link(String(feature.properties['latll']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">lonll</th>\
+                        <td>' + (feature.properties['lonll'] !== null ? autolinker.link(String(feature.properties['lonll']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">created</th>\
+                        <td>' + (feature.properties['created'] !== null ? autolinker.link(String(feature.properties['created']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">updated</th>\
+                        <td>' + (feature.properties['updated'] !== null ? autolinker.link(String(feature.properties['updated']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">lengthq</th>\
+                        <td>' + (feature.properties['lengthq'] !== null ? autolinker.link(String(feature.properties['lengthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">widthq</th>\
+                        <td>' + (feature.properties['widthq'] !== null ? autolinker.link(String(feature.properties['widthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">mindepthq</th>\
+                        <td>' + (feature.properties['mindepthq'] !== null ? autolinker.link(String(feature.properties['mindepthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxdepthq</th>\
+                        <td>' + (feature.properties['maxdepthq'] !== null ? autolinker.link(String(feature.properties['maxdepthq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">strikeq</th>\
+                        <td>' + (feature.properties['strikeq'] !== null ? autolinker.link(String(feature.properties['strikeq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">dipq</th>\
+                        <td>' + (feature.properties['dipq'] !== null ? autolinker.link(String(feature.properties['dipq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">rakeq</th>\
+                        <td>' + (feature.properties['rakeq'] !== null ? autolinker.link(String(feature.properties['rakeq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">avgdisplq</th>\
+                        <td>' + (feature.properties['avgdisplq'] !== null ? autolinker.link(String(feature.properties['avgdisplq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">sliprateq</th>\
+                        <td>' + (feature.properties['sliprateq'] !== null ? autolinker.link(String(feature.properties['sliprateq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">recintq</th>\
+                        <td>' + (feature.properties['recintq'] !== null ? autolinker.link(String(feature.properties['recintq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">maxmagq</th>\
+                        <td>' + (feature.properties['maxmagq'] !== null ? autolinker.link(String(feature.properties['maxmagq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">locationq</th>\
+                        <td>' + (feature.properties['locationq'] !== null ? autolinker.link(String(feature.properties['locationq']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">linktoinfo</th>\
+                        <td>' + (feature.properties['linktoinfo'] !== null ? autolinker.link(String(feature.properties['linktoinfo']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_GreDaSSIndividualSeismogenicSources_6_0() {
+            return {
+                pane: 'pane_GreDaSSIndividualSeismogenicSources_6',
+                opacity: 1,
+                color: 'rgba(255,204,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,203,0,0.5019607843137255)',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_GreDaSSIndividualSeismogenicSources_6');
+        map.getPane('pane_GreDaSSIndividualSeismogenicSources_6').style.zIndex = 406;
+        map.getPane('pane_GreDaSSIndividualSeismogenicSources_6').style['mix-blend-mode'] = 'normal';
+        var layer_GreDaSSIndividualSeismogenicSources_6 = new L.geoJson(json_GreDaSSIndividualSeismogenicSources_6, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_GreDaSSIndividualSeismogenicSources_6',
+            layerName: 'layer_GreDaSSIndividualSeismogenicSources_6',
+            pane: 'pane_GreDaSSIndividualSeismogenicSources_6',
+            onEachFeature: pop_GreDaSSIndividualSeismogenicSources_6,
+            style: style_GreDaSSIndividualSeismogenicSources_6_0,
+        });
+        bounds_group.addLayer(layer_GreDaSSIndividualSeismogenicSources_6);
+        map.addLayer(layer_GreDaSSIndividualSeismogenicSources_6);
+        function pop_GreDaSSDebatedSeismogenicSources_7(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2"><strong>idsource</strong><br />' + (feature.properties['idsource'] !== null ? autolinker.link(String(feature.properties['idsource']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">sourcename</th>\
+                        <td>' + (feature.properties['sourcename'] !== null ? autolinker.link(String(feature.properties['sourcename']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">created</th>\
+                        <td>' + (feature.properties['created'] !== null ? autolinker.link(String(feature.properties['created']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">updated</th>\
+                        <td>' + (feature.properties['updated'] !== null ? autolinker.link(String(feature.properties['updated']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">linktoinfo</th>\
+                        <td>' + (feature.properties['linktoinfo'] !== null ? autolinker.link(String(feature.properties['linktoinfo']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_GreDaSSDebatedSeismogenicSources_7_0() {
+            return {
+                pane: 'pane_GreDaSSDebatedSeismogenicSources_7',
+                opacity: 1,
+                color: 'rgba(18,85,144,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(17,218,163,0.5019607843137255)',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_GreDaSSDebatedSeismogenicSources_7');
+        map.getPane('pane_GreDaSSDebatedSeismogenicSources_7').style.zIndex = 407;
+        map.getPane('pane_GreDaSSDebatedSeismogenicSources_7').style['mix-blend-mode'] = 'normal';
+        var layer_GreDaSSDebatedSeismogenicSources_7 = new L.geoJson(json_GreDaSSDebatedSeismogenicSources_7, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_GreDaSSDebatedSeismogenicSources_7',
+            layerName: 'layer_GreDaSSDebatedSeismogenicSources_7',
+            pane: 'pane_GreDaSSDebatedSeismogenicSources_7',
+            onEachFeature: pop_GreDaSSDebatedSeismogenicSources_7,
+            style: style_GreDaSSDebatedSeismogenicSources_7_0,
+        });
+        bounds_group.addLayer(layer_GreDaSSDebatedSeismogenicSources_7);
+        map.addLayer(layer_GreDaSSDebatedSeismogenicSources_7);
+        function pop_GreDaSSCompositeSeismogenicSourcesContours_8(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <th scope="row">idsource</th>\
+                        <td>' + (feature.properties['idsource'] !== null ? autolinker.link(String(feature.properties['idsource']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">idcontour</th>\
+                        <td>' + (feature.properties['idcontour'] !== null ? autolinker.link(String(feature.properties['idcontour']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">depth</th>\
+                        <td>' + (feature.properties['depth'] !== null ? autolinker.link(String(feature.properties['depth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_GreDaSSCompositeSeismogenicSourcesContours_8_0(feature) {
+            if (feature.properties['depth'] >= -1.000000 && feature.properties['depth'] <= 2.000000 ) {
+                return {
+                pane: 'pane_GreDaSSCompositeSeismogenicSourcesContours_8',
+                opacity: 1,
+                color: 'rgba(30,92,179,1.0)',
+                dashArray: '1.0,2.0',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+            }
+            if (feature.properties['depth'] >= 2.000000 && feature.properties['depth'] <= 4.000000 ) {
+                return {
+                pane: 'pane_GreDaSSCompositeSeismogenicSourcesContours_8',
+                opacity: 1,
+                color: 'rgba(11,142,216,1.0)',
+                dashArray: '1.0,2.0',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+            }
+            if (feature.properties['depth'] >= 4.000000 && feature.properties['depth'] <= 6.000000 ) {
+                return {
+                pane: 'pane_GreDaSSCompositeSeismogenicSourcesContours_8',
+                opacity: 1,
+                color: 'rgba(51,188,207,1.0)',
+                dashArray: '1.0,2.0',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+            }
+            if (feature.properties['depth'] >= 6.000000 && feature.properties['depth'] <= 8.000000 ) {
+                return {
+                pane: 'pane_GreDaSSCompositeSeismogenicSourcesContours_8',
+                opacity: 1,
+                color: 'rgba(153,219,184,1.0)',
+                dashArray: '1.0,2.0',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+            }
+            if (feature.properties['depth'] >= 8.000000 && feature.properties['depth'] <= 10.000000 ) {
+                return {
+                pane: 'pane_GreDaSSCompositeSeismogenicSourcesContours_8',
+                opacity: 1,
+                color: 'rgba(243,240,29,1.0)',
+                dashArray: '1.0,2.0',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+            }
+            if (feature.properties['depth'] >= 10.000000 && feature.properties['depth'] <= 12.000000 ) {
+                return {
+                pane: 'pane_GreDaSSCompositeSeismogenicSourcesContours_8',
+                opacity: 1,
+                color: 'rgba(252,199,7,1.0)',
+                dashArray: '1.0,2.0',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+            }
+            if (feature.properties['depth'] >= 12.000000 && feature.properties['depth'] <= 15.000000 ) {
+                return {
+                pane: 'pane_GreDaSSCompositeSeismogenicSourcesContours_8',
+                opacity: 1,
+                color: 'rgba(241,71,28,1.0)',
+                dashArray: '1.0,2.0',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+            }
+            if (feature.properties['depth'] >= 15.000000 && feature.properties['depth'] <= 25.000000 ) {
+                return {
+                pane: 'pane_GreDaSSCompositeSeismogenicSourcesContours_8',
+                opacity: 1,
+                color: 'rgba(164,38,44,1.0)',
+                dashArray: '1.0,2.0',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+            }
+        }
+        map.createPane('pane_GreDaSSCompositeSeismogenicSourcesContours_8');
+        map.getPane('pane_GreDaSSCompositeSeismogenicSourcesContours_8').style.zIndex = 408;
+        map.getPane('pane_GreDaSSCompositeSeismogenicSourcesContours_8').style['mix-blend-mode'] = 'normal';
+        var layer_GreDaSSCompositeSeismogenicSourcesContours_8 = new L.geoJson(json_GreDaSSCompositeSeismogenicSourcesContours_8, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_GreDaSSCompositeSeismogenicSourcesContours_8',
+            layerName: 'layer_GreDaSSCompositeSeismogenicSourcesContours_8',
+            pane: 'pane_GreDaSSCompositeSeismogenicSourcesContours_8',
+            onEachFeature: pop_GreDaSSCompositeSeismogenicSourcesContours_8,
+            style: style_GreDaSSCompositeSeismogenicSourcesContours_8_0,
+        });
+        bounds_group.addLayer(layer_GreDaSSCompositeSeismogenicSourcesContours_8);
+        function pop_NOAFaultsv7_attr_9(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['id'] !== null ? autolinker.link(String(feature.properties['id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2"><strong>Name</strong><br />' + (feature.properties['Name'] !== null ? autolinker.link(String(feature.properties['Name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2"><strong>Fault_Code</strong><br />' + (feature.properties['Fault_Code'] !== null ? autolinker.link(String(feature.properties['Fault_Code']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Kinematics</th>\
+                        <td>' + (feature.properties['Kinematics'] !== null ? autolinker.link(String(feature.properties['Kinematics']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Lenght_km</th>\
+                        <td>' + (feature.properties['Lenght_km'] !== null ? autolinker.link(String(feature.properties['Lenght_km']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Geology</th>\
+                        <td>' + (feature.properties['Geology'] !== null ? autolinker.link(String(feature.properties['Geology']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">LocReliab</th>\
+                        <td>' + (feature.properties['LocReliab'] !== null ? autolinker.link(String(feature.properties['LocReliab']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Monitoring</th>\
+                        <td>' + (feature.properties['Monitoring'] !== null ? autolinker.link(String(feature.properties['Monitoring']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Paleoseism</th>\
+                        <td>' + (feature.properties['Paleoseism'] !== null ? autolinker.link(String(feature.properties['Paleoseism']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Coseismic1</th>\
+                        <td>' + (feature.properties['Coseismic1'] !== null ? autolinker.link(String(feature.properties['Coseismic1']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Coseismic2</th>\
+                        <td>' + (feature.properties['Coseismic2'] !== null ? autolinker.link(String(feature.properties['Coseismic2']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Active_Rel</th>\
+                        <td>' + (feature.properties['Active_Rel'] !== null ? autolinker.link(String(feature.properties['Active_Rel']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">SlipRate</th>\
+                        <td>' + (feature.properties['SlipRate'] !== null ? autolinker.link(String(feature.properties['SlipRate']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Instrument</th>\
+                        <td>' + (feature.properties['Instrument'] !== null ? autolinker.link(String(feature.properties['Instrument']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Historical</th>\
+                        <td>' + (feature.properties['Historical'] !== null ? autolinker.link(String(feature.properties['Historical']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">SeismicEve</th>\
+                        <td>' + (feature.properties['SeismicEve'] !== null ? autolinker.link(String(feature.properties['SeismicEve']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">MaxRecorde</th>\
+                        <td>' + (feature.properties['MaxRecorde'] !== null ? autolinker.link(String(feature.properties['MaxRecorde']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">RiskLevel</th>\
+                        <td>' + (feature.properties['RiskLevel'] !== null ? autolinker.link(String(feature.properties['RiskLevel']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">StudyQual</th>\
+                        <td>' + (feature.properties['StudyQual'] !== null ? autolinker.link(String(feature.properties['StudyQual']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Notes</th>\
+                        <td>' + (feature.properties['Notes'] !== null ? autolinker.link(String(feature.properties['Notes']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">AssocFigur</th>\
+                        <td>' + (feature.properties['AssocFigur'] !== null ? autolinker.link(String(feature.properties['AssocFigur']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Ref</th>\
+                        <td>' + (feature.properties['Ref'] !== null ? autolinker.link(String(feature.properties['Ref']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Compiler</th>\
+                        <td>' + (feature.properties['Compiler'] !== null ? autolinker.link(String(feature.properties['Compiler']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">FieldPhoto</th>\
+                        <td>' + (feature.properties['FieldPhoto'] !== null ? autolinker.link(String(feature.properties['FieldPhoto']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">DipDir</th>\
+                        <td>' + (feature.properties['DipDir'] !== null ? autolinker.link(String(feature.properties['DipDir']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Strike</th>\
+                        <td>' + (feature.properties['Strike'] !== null ? autolinker.link(String(feature.properties['Strike']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Dip</th>\
+                        <td>' + (feature.properties['Dip'] !== null ? autolinker.link(String(feature.properties['Dip']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">Rake</th>\
+                        <td>' + (feature.properties['Rake'] !== null ? autolinker.link(String(feature.properties['Rake']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">doi</th>\
+                        <td>' + (feature.properties['doi'] !== null ? autolinker.link(String(feature.properties['doi']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_NOAFaultsv7_attr_9_0() {
+            return {
+                pane: 'pane_NOAFaultsv7_attr_9',
+                opacity: 1,
+                color: 'rgba(255,255,255,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        map.createPane('pane_NOAFaultsv7_attr_9');
+        map.getPane('pane_NOAFaultsv7_attr_9').style.zIndex = 409;
+        map.getPane('pane_NOAFaultsv7_attr_9').style['mix-blend-mode'] = 'normal';
+        var layer_NOAFaultsv7_attr_9 = new L.geoJson(json_NOAFaultsv7_attr_9, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_NOAFaultsv7_attr_9',
+            layerName: 'layer_NOAFaultsv7_attr_9',
+            pane: 'pane_NOAFaultsv7_attr_9',
+            onEachFeature: pop_NOAFaultsv7_attr_9,
+            style: style_NOAFaultsv7_attr_9_0,
+        });
+        bounds_group.addLayer(layer_NOAFaultsv7_attr_9);
+        map.addLayer(layer_NOAFaultsv7_attr_9);
+        var overlaysTree = [
+            {label: '<img src="legend/NOAFaultsv7_attr_9.png" /> NOAFaults v7_attr', layer: layer_NOAFaultsv7_attr_9},
+        {label: '<b>GreDaSS v3.0</b>',  selectAllCheckbox: true, children: [
+            {label: 'GreDaSS - Composite Seismogenic Sources Contours<br /><table><tr><td style="text-align: center;"><img src="legend/GreDaSSCompositeSeismogenicSourcesContours_8_120.png" /></td><td>-1 - 2</td></tr><tr><td style="text-align: center;"><img src="legend/GreDaSSCompositeSeismogenicSourcesContours_8_241.png" /></td><td>2 - 4</td></tr><tr><td style="text-align: center;"><img src="legend/GreDaSSCompositeSeismogenicSourcesContours_8_462.png" /></td><td>4 - 6</td></tr><tr><td style="text-align: center;"><img src="legend/GreDaSSCompositeSeismogenicSourcesContours_8_683.png" /></td><td>6 - 8</td></tr><tr><td style="text-align: center;"><img src="legend/GreDaSSCompositeSeismogenicSourcesContours_8_8104.png" /></td><td>8 - 10</td></tr><tr><td style="text-align: center;"><img src="legend/GreDaSSCompositeSeismogenicSourcesContours_8_10125.png" /></td><td>10 - 12</td></tr><tr><td style="text-align: center;"><img src="legend/GreDaSSCompositeSeismogenicSourcesContours_8_12156.png" /></td><td>12 - 15</td></tr><tr><td style="text-align: center;"><img src="legend/GreDaSSCompositeSeismogenicSourcesContours_8_15257.png" /></td><td>15 - 25</td></tr></table>', layer: layer_GreDaSSCompositeSeismogenicSourcesContours_8},
+            {label: '<img src="legend/GreDaSSDebatedSeismogenicSources_7.png" /> GreDaSS - Debated Seismogenic Sources', layer: layer_GreDaSSDebatedSeismogenicSources_7},
+            {label: '<img src="legend/GreDaSSIndividualSeismogenicSources_6.png" /> GreDaSS - Individual Seismogenic Sources', layer: layer_GreDaSSIndividualSeismogenicSources_6},
+            {label: '<img src="legend/GreDaSSCompositeSeismogenicSourcesTop_5.png" /> GreDaSS - Composite Seismogenic Sources Top', layer: layer_GreDaSSCompositeSeismogenicSourcesTop_5},
+            {label: '<img src="legend/GreDaSSCompositeSeismogenicSourcesPlanes_4.png" /> GreDaSS - Composite Seismogenic Sources Planes', layer: layer_GreDaSSCompositeSeismogenicSourcesPlanes_4},
+            {label: '<img src="legend/GreDaSSSubductionZoneTop_3.png" /> GreDaSS - Subduction Zone Top', layer: layer_GreDaSSSubductionZoneTop_3},
+            {label: '<img src="legend/GreDaSSSubductioncontours_2.png" /> GreDaSS - Subduction contours', layer: layer_GreDaSSSubductioncontours_2},
+            {label: '<img src="legend/GreDaSSSubductionZone_1.png" /> GreDaSS - Subduction Zone', layer: layer_GreDaSSSubductionZone_1},]},
+            {label: "Carto Dark", layer: layer_CartoDark_0, radioGroup: 'bm' },]
+        var lay = L.control.layers.tree(null, overlaysTree,{
+            //namedToggle: true,
+            //selectorBack: false,
+            //closedSymbol: '&#8862; &#x1f5c0;',
+            //openedSymbol: '&#8863; &#x1f5c1;',
+            //collapseAll: 'Collapse all',
+            //expandAll: 'Expand all',
+            collapsed: false, 
+        });
+        lay.addTo(map);
+		document.addEventListener("DOMContentLoaded", function() {
+            // set new Layers List height which considers toggle icon
+            function newLayersListHeight() {
+                var layerScrollbarElement = document.querySelector('.leaflet-control-layers-scrollbar');
+                if (layerScrollbarElement) {
+                    var layersListElement = document.querySelector('.leaflet-control-layers-list');
+                    var originalHeight = layersListElement.style.height 
+                        || window.getComputedStyle(layersListElement).height;
+                    var newHeight = parseFloat(originalHeight) - 50;
+                    layersListElement.style.height = newHeight + 'px';
+                }
+            }
+            var isLayersListExpanded = true;
+            var controlLayersElement = document.querySelector('.leaflet-control-layers');
+            var toggleLayerControl = document.querySelector('.leaflet-control-layers-toggle');
+            // toggle Collapsed/Expanded and apply new Layers List height
+            toggleLayerControl.addEventListener('click', function() {
+                if (isLayersListExpanded) {
+                    controlLayersElement.classList.remove('leaflet-control-layers-expanded');
+                } else {
+                    controlLayersElement.classList.add('leaflet-control-layers-expanded');
+                }
+                isLayersListExpanded = !isLayersListExpanded;
+                newLayersListHeight()
+            });	
+			// apply new Layers List height if toggle layerstree
+			if (controlLayersElement) {
+				controlLayersElement.addEventListener('click', function(event) {
+					var toggleLayerHeaderPointer = event.target.closest('.leaflet-layerstree-header-pointer span');
+					if (toggleLayerHeaderPointer) {
+						newLayersListHeight();
+					}
+				});
+			}
+            // Collapsed/Expanded at Start to apply new height
+            setTimeout(function() {
+                toggleLayerControl.click();
+            }, 10);
+            setTimeout(function() {
+                toggleLayerControl.click();
+            }, 10);
+            // Collapsed touch/small screen
+            var isSmallScreen = window.innerWidth < 650;
+            if (isSmallScreen) {
+                setTimeout(function() {
+                    controlLayersElement.classList.remove('leaflet-control-layers-expanded');
+                    isLayersListExpanded = !isLayersListExpanded;
+                }, 500);
+            }  
+        });       
+        setBounds();
+        </script>        
+    </body>
+</html>
